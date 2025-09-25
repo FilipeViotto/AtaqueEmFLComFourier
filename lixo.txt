@@ -1,0 +1,32 @@
+Com base nas informações do artigo, a resposta é que o artigo não detalha explicitamente o método que usou para lidar com as imagens coloridas do CIFAR-10.
+
+A Seção 4 ("Método") descreve o processo de forma genérica, sem especificar como os três canais de cor (RGB) são tratados.
+
+No entanto, podemos inferir a abordagem mais provável com base nas evidências visuais e na prática comum:
+
+Evidência Visual: A Figura 6 ("The backdoor trigger display") mostra claramente imagens coloridas do CIFAR-10 sendo processadas. A coluna "Residual" (que mostra a diferença entre a imagem original e a envenenada) também exibe algumas alterações de cor, especialmente no ataque "Blend", o que sugere que os canais de cor foram de fato modificados.
+
+Método Provável (Não Confirmado no Texto): A abordagem mais direta e provável, embora não declarada no artigo, é que os autores aplicaram o processo de ataque de frequência de forma independente para cada um dos três canais de cor (Vermelho, Verde e Azul).
+
+O processo teria sido o seguinte:
+
+Separar a imagem colorida em seus três canais: R, G e B.
+
+Para o canal Vermelho (R):
+
+Aplicar a FFT no canal R da imagem limpa e no canal R da imagem de gatilho.
+
+Calcular a média ponderada das amplitudes.
+
+Reconstruir o novo canal R usando a fase original do canal R limpo e a IFFT.
+
+Repetir o passo 2 para o canal Verde (G).
+
+Repetir o passo 2 para o canal Azul (B).
+
+Juntar os três canais R, G e B modificados para formar a imagem colorida envenenada final.
+
+Comparação com a Abordagem YCbCr
+A abordagem que sugeri anteriormente (usando o espaço de cor YCbCr) é geralmente considerada mais avançada, pois isola o brilho da cor. Isso tende a preservar melhor a fidelidade das cores originais, tornando o ataque potencialmente ainda mais furtivo.
+
+O método provável do artigo (aplicar em cada canal RGB) é mais simples de implementar,

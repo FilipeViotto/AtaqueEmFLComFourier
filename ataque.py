@@ -13,26 +13,91 @@ class Contador():
     def nextP(self):
         self.contador+=1
         return self.contador%self.limite
+
+def criar_mascara(altura, largura):
+    mascara = np.zeros((altura, largura), dtype=np.float32)
     
+    centro_h, centro_w = altura // 2, largura // 2
+    
+    meia_h = int(args.beta * altura / 2)
+    meia_w = int(args.beta * largura / 2)
+    
+    top, bottom = centro_h - meia_h, centro_h + meia_h
+    left, right = centro_w - meia_w, centro_w + meia_w
+    
+    mascara[top:bottom, left:right] = 1.0
+    
+    return mascara
 
 
 def amplitude(imagem):
     fft = np.fft.fft2(imagem)
     amp = np.abs(fft)
     fase = np.angle(fft)
-
-
-
-    # img = imagem.numpy()
-    # img_2d = img.squeeze()
-    # img = np.float32(img_2d)
-    # dft = cv.dft(img, flags=cv.DFT_COMPLEX_OUTPUT)
-    # dft_shift = np.fft.fftshift(dft)
-    # magnitudeSpectrum = 20 * np.log(cv.magnitude(dft_shift[:, :, 0], dft_shift[:, :, 1]))
-    
     return amp, fase
 
-def preparaMinstAtaque(trainSet):
+def envenenamento(amGatilho, amAlvo, faseAlvo):
+    altura, largura = amAlvo.shape
+    mascara = criar_mascara(altura, largura)
+    amplitudeFinal = (args.proporcaoAtaque*amGatilho+(1-args.proporcaoAtaque)*amAlvo)*mascara + amAlvo*(1-mascara)
+    fftModificada = amplitudeFinal * np.exp(1j * faseAlvo)
+    imagemEnvenenada = np.real(np.fft.ifft2(fftModificada))
+    tensor = torch.from_numpy(imagemEnvenenada).float()
+    return tensor
+
+def ataqueCifar(trainSet):
+    listaAmplitudeGatilho = []
+    for dados in trainSet[0:args.num_atacante]:
+        for imagem, rotulo in dados:
+            for i in range(len(rotulo)):
+                if rotulo[i] == args.gatilho:
+                    vermelho, _ = amplitude(imagem[i][0])
+                    verde, _ = amplitude(imagem[i][1])
+                    azul, _ = amplitude(imagem[i][2])
+                    listaAmplitudeGatilho.append([vermelho, verde, azul])
+
+    contador = Contador(len(listaAmplitudeGatilho))
+    contador2 = 0
+    for dados in trainSet[0:args.num_atacante]:
+        for imagem, rotulo in dados:
+            for i in range(len(rotulo)):
+                if rotulo[i] == args.alvo:
+                    img_antes_original = imagem[i].detach().clone()
+                    rotulo[i] = args.gatilho
+                    vermeAm, vermeFa = amplitude(imagem[i][0])
+                    verdAm, verdFa = amplitude(imagem[i][1])
+                    azAm, azFa = amplitude(imagem[i][2])
+                    
+                    amplitudeGatilho = listaAmplitudeGatilho[contador.nextP()]
+                    
+                    vermelho = envenenamento(amplitudeGatilho[0], vermeAm, vermeFa)
+                    verde = envenenamento(amplitudeGatilho[1], verdAm, verdFa)
+                    azul = envenenamento(amplitudeGatilho[2], azAm, azFa)
+                    
+                    imagem_reconstruida = torch.stack([vermelho, verde, azul], dim=0)
+                    imagem[i] = imagem_reconstruida
+                    
+                    # plt.figure(figsize=(10, 5))
+                    
+                    # plt.subplot(1, 2, 1)
+                    # img_antes_plot = img_antes_original.permute(1, 2, 0).numpy() 
+                    # img_antes_plot = img_antes_plot * 0.5 + 0.5 
+                    # plt.imshow(img_antes_plot)
+                    # plt.title('Imagem Antes')
+                    # plt.xticks([]), plt.yticks([])
+
+                    # plt.subplot(1, 2, 2)
+                    # img_depois_plot = imagem_reconstruida.permute(1, 2, 0).numpy()
+                    # plt.imshow(img_depois_plot)
+                    # plt.title('Imagem Depois (Envenenada)')
+                    # plt.xticks([]), plt.yticks([])
+                    
+                    # plt.savefig(f'antesDepoisCor/{contador2}.png')
+                    # plt.close()
+                    # contador2 += 1
+
+
+def ataqueMnist(trainSet):
     listaAmplitudeGatilho = []
     listaAmplitudeAlvo = []
     for num, dados in enumerate(trainSet[0:args.num_atacante]):

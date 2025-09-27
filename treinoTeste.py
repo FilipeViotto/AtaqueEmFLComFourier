@@ -5,14 +5,21 @@ args = Args()
 from modelos import Modelo
 
 
-def treinar(modelos, train_list, listaOptim:list, device = torch.device('cpu')):
+def treinar(modelos, train_list, listaOptim:list, device, selecionados):
     criterion = nn.CrossEntropyLoss()
-    for epocaDeTreino in range(10):
-        for modelo, conjuntoDeTreino, optim in zip(modelos, train_list, listaOptim):
+    for epocaDeTreino in range(args.epocasLocais):
+        print(f"epoca interna: {epocaDeTreino}")
+        for i in selecionados:
+            modelo = modelos[i]
+            conjuntoDeTreino = train_list[i]
+            optim = listaOptim[i]
+            
             modelo.train()
             for imagem, rotulo in conjuntoDeTreino:
-                optim.zero_grad()
+                # Agora 'imagem' e 'rotulo' são garantidamente tensores!
                 imagem, rotulo = imagem.to(device), rotulo.to(device)
+                
+                optim.zero_grad()
                 out = modelo(imagem)
                 loss = criterion(out, rotulo)
                 loss.backward()
@@ -29,7 +36,6 @@ def testar(modelo, teste, device = torch.device('cpu'), classes=None):
     disseSerGatilho = 0
 
     with torch.no_grad():
-        # O loop externo pega um BATCH de imagens e rótulos
         for x, y in teste:
             x = x.to(device)
             y = y.to(device)
@@ -37,13 +43,10 @@ def testar(modelo, teste, device = torch.device('cpu'), classes=None):
             out = modelo(x)
             _, predictions = out.max(1)
 
-            # --- CORREÇÃO PRINCIPAL: Loop Interno ---
-            # Itera sobre cada item DENTRO do batch
             for i in range(len(y)):
                 true_label = y[i]
                 predLabel = predictions[i]
 
-                # Agora as comparações são feitas com valores únicos
                 if true_label == predLabel:
                     acertos_totais += 1
 

@@ -1,70 +1,105 @@
+import random
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from args import Args
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 import down_datas
 args = Args()
-from modelos import Modelo, ModeloCifar10, ModeloCifar10_Revisado
+from modelos import ResNet18
 import torch.optim as optim
-device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Usando dispositivo: {device}")
+
 from agregacoes import avg
 from treinoTeste import testar, treinar
-from ataque import ataqueCifar, ataqueMnist
+### MUDANÇA ###
+# Importamos as funções e classes necessárias de ataque.py
+from ataque import get_trigger_amplitudes, PoisonedDataset
 
 def pegar_dados_iid():
-    # Baixa os dados de treino
     train_data, test_data, classes = down_datas.down_cifar()
 
+    ### MUDANÇA ###
+    # 1. Primeiro, coletamos as amplitudes do gatilho do dataset completo
+    trigger_amplitudes = get_trigger_amplitudes(train_data, args)
+    if not trigger_amplitudes:
+        raise ValueError("Nenhuma imagem de gatilho encontrada. Verifique a classe de gatilho.")
+
+    # 2. Dividimos os dados para os clientes como antes
     num_exemplos = len(train_data)
-    exemplo_por_cliente = num_exemplos//args.num_cliente
-    tamanho_dataset = [exemplo_por_cliente] * args.num_cliente
+    exemplo_por_cliente = num_exemplos // args.num_cliente
+    tamanho_dataset = [exemplo_por_cliente] * (args.num_cliente - 1)
+    tamanho_dataset.append(num_exemplos - sum(tamanho_dataset)) # Garante que todos os dados sejam usados
     
     SEED = 42
-    np.random.seed(SEED)
-    torch.manual_seed(SEED)
-    client_datasets = random_split(train_data, tamanho_dataset)
-    
     generator = torch.Generator().manual_seed(SEED)
+    client_datasets_original = random_split(train_data, tamanho_dataset, generator=generator)
+    
+    ### MUDANÇA ###
+    # 3. Criamos os datasets finais: envenenados para atacantes, normais para os outros
+    final_client_datasets = []
+    for i in range(args.num_cliente):
+        if i < args.num_atacante:
+            # Cliente é um atacante: envolvemos seu dataset com PoisonedDataset
+            poisoned_set = PoisonedDataset(client_datasets_original[i], trigger_amplitudes, args)
+            final_client_datasets.append(poisoned_set)
+            print(f"Cliente {i} é um atacante. Dataset envenenado.")
+        else:
+            # Cliente benigno: usamos o dataset original
+            final_client_datasets.append(client_datasets_original[i])
+
+    # 4. Criamos os DataLoaders a partir dos datasets finais
     lista_dataloaders = []
-    for dataset in client_datasets:
-        loader = DataLoader(dataset,args.batchsize,True,generator=generator)
+    for dataset in final_client_datasets:
+        loader = DataLoader(dataset, args.batchsize, shuffle=True, generator=generator)
         lista_dataloaders.append(loader)
 
-    torch.manual_seed(SEED)
-    teste = random_split(test_data, [10000])
-    loaderTest = DataLoader(teste[0], args.batchsize, False)
+    # Cria o DataLoader de teste
+    test_loader = DataLoader(test_data, args.batchsize, shuffle=False)
     
-    return loaderTest, lista_dataloaders, classes
+    return test_loader, lista_dataloaders, classes
 
 
 testSet, trainSetList, classes = pegar_dados_iid()
 
-camada = None
-for dado in trainSetList:
-    for imagem, _ in dado:
-        camada = imagem.shape[1]
-        break
-        
+modeloGlobal = ResNet18().to(device)
+listaDeModelos = [ResNet18().to(device) for _ in range(args.num_cliente)]
+for modelo in listaDeModelos:
+    modelo.load_state_dict(modeloGlobal.state_dict())
 
+listaOptim = [optim.Adam(modelo.parameters(), lr=args.lr) for modelo in listaDeModelos]
 
-listaDeModelos = [ModeloCifar10().to(device) for i in range(args.num_cliente)]
-listaOptim = [optim.Adam(modelo.parameters(), lr=args.lr,) for modelo in listaDeModelos]
+# ### MUDANÇA ###
+# A chamada para ataqueCifar() é removida daqui, pois a lógica agora está em pegar_dados_iid
+# ataqueCifar(trainSetList) 
 listaAcuracia = []
 errosCertos = []
 errosErrados = []
 precisaoGatilho = []
-
-ataqueCifar(trainSetList)
-
 try:
     for epoca in range(args.epoca):
-        print(f'\nEp {epoca}')
+        # Seleciona 10 clientes aleatoriamente para treinar
+        selecionados = random.sample(range(args.num_cliente), args.selecionar)
+        print(f'\n--- Época {epoca} ---')
+        print(f"Clientes selecionados: {selecionados}")
+
+        if epoca == 100 or epoca == 200:
+            args.lr /= 5
+            print(f"Reduzindo taxa de aprendizado para: {args.lr}")
+            listaOptim = [optim.Adam(modelo.parameters(), lr=args.lr) for modelo in listaDeModelos]
         
-        treinar(listaDeModelos, trainSetList, listaOptim)
-        avg(listaDeModelos)
-        acc, backdoor, naoBackdoor, GatilhoEGatilho = testar(listaDeModelos[0], testSet, device, classes)
-        print(f'acc:{acc}, backdoor:{backdoor}, GatilhoCerto:{GatilhoEGatilho}, nãoBackdoor:{naoBackdoor}')
+        # Passa o device para a função de treino
+        treinar(listaDeModelos, trainSetList, listaOptim, device, selecionados)
+        
+        print('Agregando modelos...')
+        avg(listaDeModelos, modeloGlobal, selecionados)
+
+        print("Testando modelo global...")
+        # Passa o device para a função de teste
+        acc, backdoor, naoBackdoor, GatilhoEGatilho = testar(modeloGlobal, testSet, device, classes)
+        print(f'Acurácia: {acc:.2f}%, ASR (Backdoor): {backdoor:.2f}%, Gatilho C/C: {GatilhoEGatilho:.2f}%, Gatilho C/E: {naoBackdoor:.2f}%')
+
 
         listaAcuracia.append(acc)
         errosCertos.append(backdoor)

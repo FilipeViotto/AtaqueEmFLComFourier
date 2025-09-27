@@ -12,7 +12,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import os
 from agregacoes import avg, avg_padrao
 from treinoTeste import testar, treinar
-
+from enviaEmail import enviarEmail
 from ataque import get_trigger_amplitudes, PoisonedDataset
 
 def pegar_dados_iid():
@@ -65,7 +65,7 @@ for wm in range(0, 100, 5):
     for modelo in listaDeModelos:
         modelo.load_state_dict(modeloGlobal.state_dict())
 
-    listaOptim = [optim.Adam(modelo.parameters(), lr=args.lr) for modelo in listaDeModelos]
+    listaOptim = [optim.SGD(modelo.parameters(), lr=args.lr, momentum=0.9) for modelo in listaDeModelos]
 
     # ### MUDANÇA ###
     # A chamada para ataqueCifar() é removida daqui, pois a lógica agora está em pegar_dados_iid
@@ -81,7 +81,8 @@ for wm in range(0, 100, 5):
             print(f"Clientes selecionados: {selecionados}")
 
             if epoca == 100 or epoca == 200:
-                args.lr /= 2
+                args.lr = args.reducao
+                args.reducao = args.segundaReducao
                 print(f"Reduzindo taxa de aprendizado para: {args.lr}")
                 listaOptim = [optim.SGD(modelo.parameters(), lr=args.lr, momentum=0.9) for modelo in listaDeModelos]
             
@@ -106,30 +107,56 @@ for wm in range(0, 100, 5):
         maiores_acc.append(max(listaAcuracia))
         maiores_asr.append(max(errosCertos))
         path = f'simulacoes/sim{args.num_atacante}'
-
         
         if not os.path.exists(path):
             os.makedirs(path)
 
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(10, 8))
+        config_info = {
+            'Itens na Simulação': args.num_cliente,
+            'Tipo de modelo': 'ModeloSimplificado',
+            'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+            'Otimizador': 'SDG',
+            'Dataset': 'CIFAR-10',
+            'Atacantes': wm,
+            'Clientes selecionados por epoca': args.selecionar
+            }
+        info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
         plt.plot(range(len(listaAcuracia)), listaAcuracia, label='Acurácia')
         plt.plot(range(len(errosCertos)), errosCertos, label='ASR')
-        plt.plot(range(len(errosErrados)), errosErrados, label='ErrouErrado')
+        plt.plot(range(len(errosErrados)), errosErrados, label='ImprecisãoBackdoor')
         plt.title('Análise de Métricas por Épocas')
         plt.xlabel('Épocas')
         plt.ylabel('Valor da Métrica')
         plt.legend()
         plt.grid(True)
+        plt.subplots_adjust(bottom=0.25)
+        plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
         plt.savefig(f'{path}/grafico_combinado.png')
         plt.close()
+        enviarEmail(f'atacante: {wm}\n\nacuracia: {listaAcuracia}\n\nASR: {errosCertos}\n\nimprecisãoBackdoor: {errosErrados}\n', f'{path}/grafico_combinado.png',)
 
 
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(10, 8))
+config_info = {
+    'Itens na Simulação': args.num_cliente,
+    'Tipo de modelo': 'ModeloSimplificado',
+    'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+    'Otimizador': 'SDG',
+    'Dataset': 'CIFAR-10',
+    'Atacantes': wm,
+    'Clientes selecionados por epoca': args.selecionar
+    }
+info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
 plt.plot(range(0,100,5), maiores_acc, label = 'Acurácia')
 plt.plot(range(0,100,5), maiores_asr, lable = 'ASR')
 plt.title('Análise de Métricas por Atacante')
 plt.xlabel('Atacantes')
 plt.ylabel('Valor da Métrica')
+plt.legend()
 plt.grid(True)
+plt.subplots_adjust(bottom=0.25)
+plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
 plt.savefig(f'metricaPorAtacante.png')
 plt.close()
+enviarEmail(f'Resultado total\n\n Maiores acuracias: {maiores_acc}, maiores ASR: {maiores_asr}', f'metricaPorAtacante.png')

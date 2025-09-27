@@ -1,14 +1,12 @@
 import torch.nn as nn
 import torch
 from args import Args
-args = Args()
 from modelos import Modelo
 
 
-def treinar(modelos, train_list, listaOptim:list, device, selecionados):
+def treinar(modelos, train_list, listaOptim:list, device, selecionados, args:Args):
     criterion = nn.CrossEntropyLoss()
     for epocaDeTreino in range(args.epocasLocais):
-        print(f"epoca interna: {epocaDeTreino}")
         for i in selecionados:
             modelo = modelos[i]
             conjuntoDeTreino = train_list[i]
@@ -16,7 +14,6 @@ def treinar(modelos, train_list, listaOptim:list, device, selecionados):
             
             modelo.train()
             for imagem, rotulo in conjuntoDeTreino:
-                # Agora 'imagem' e 'rotulo' são garantidamente tensores!
                 imagem, rotulo = imagem.to(device), rotulo.to(device)
                 
                 optim.zero_grad()
@@ -24,59 +21,58 @@ def treinar(modelos, train_list, listaOptim:list, device, selecionados):
                 loss = criterion(out, rotulo)
                 loss.backward()
                 optim.step()
+        
+                    
 
-def testar(modelo, teste, device = torch.device('cpu'), classes=None):
+def testar(modelo, test_loader, device, classes=None, args = None):
     modelo.eval()
-    totalUm = 0
-    totalGatilho = 0
-    erroPorBack = 0
-    outrosErros = 0
-    acertos_totais = 0
-    total_amostras = 0
-    disseSerGatilho = 0
+    correct = 0
+    total = 0
+    
+    # Métricas de backdoor
+    backdoor_success = 0
+    backdoor_total = 0
+    trigger_correct_as_trigger = 0 # Rotulado como gatilho e era gatilho
+    trigger_total = 0
 
     with torch.no_grad():
-        for x, y in teste:
-            x = x.to(device)
-            y = y.to(device)
-
-            out = modelo(x)
-            _, predictions = out.max(1)
-
-            for i in range(len(y)):
-                true_label = y[i]
-                predLabel = predictions[i]
-
-                if true_label == predLabel:
-                    acertos_totais += 1
-
-                if true_label == args.alvo:
-                    totalUm += 1
-                    if predLabel == args.gatilho:
-                        erroPorBack += 1
-                    elif predLabel != args.alvo:
-                        outrosErros += 1
-                
-                elif true_label == args.gatilho:
-                    totalGatilho += 1
-                
-                if predLabel == args.gatilho:
-                    disseSerGatilho += 1
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = modelo(images)
+            _, predicted = torch.max(outputs.data, 1)
             
-            total_amostras += y.size(0)
+            # 1. Acurácia Geral
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
 
-    # Evitar divisão por zero se não houver amostras
-    if totalUm == 0: totalUm = 1
-    if disseSerGatilho == 0: disseSerGatilho = 1
-    if total_amostras == 0: total_amostras = 1
+            # 2. Análise do Ataque de Backdoor (ASR)
+            # Seleciona apenas as imagens que SÃO da classe alvo
+            target_mask = (labels == args.alvo)
+            if target_mask.sum().item() > 0:
+                backdoor_total += target_mask.sum().item()
+                # Conta quantas vezes a predição para uma classe alvo foi a classe gatilho
+                backdoor_success += (predicted[target_mask] == args.gatilho).sum().item()
 
-    # Cálculos de acurácia corrigidos
-    acuracia = (acertos_totais / total_amostras) * 100
-    backdoor_rate = (erroPorBack / totalUm) * 100
-    outros_erros_rate = (outrosErros / totalUm) * 100
-    precisao_gatilho = (disseSerGatilho/totalGatilho) * 100
+            # 3. Análise da performance na classe gatilho original
+            # Seleciona apenas as imagens que SÃO da classe gatilho
+            trigger_mask = (labels == args.gatilho)
+            if trigger_mask.sum().item() > 0:
+                trigger_total += trigger_mask.sum().item()
+                # Conta quantas vezes o modelo acertou a classe gatilho
+                trigger_correct_as_trigger += (predicted[trigger_mask] == args.gatilho).sum().item()
 
-    return acuracia, backdoor_rate, outros_erros_rate, precisao_gatilho
+    # Cálculo final das métricas
+    accuracy = 100 * correct / total
+    asr = 100 * backdoor_success / backdoor_total if backdoor_total > 0 else 0
+    
+    # Acurácia do modelo em imagens limpas da classe gatilho
+    trigger_clean_acc = 100 * trigger_correct_as_trigger / trigger_total if trigger_total > 0 else 0
+    # Taxa de erro (classificando como algo diferente do gatilho)
+    trigger_error_rate = 100 - trigger_clean_acc
+    
+    # O retorno corresponde à sua chamada no main.py:
+    # acc, backdoor, naoBackdoor, GatilhoEGatilho
+    return accuracy, asr, trigger_error_rate
 
 
 def testar2(modelo, test_loader, device = torch.device('cpu'), classes = None):

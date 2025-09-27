@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
 import torch
-from args import Args
-args = Args()
 from torch.utils.data import Dataset
 
 
@@ -16,7 +14,7 @@ class Contador():
         self.contador+=1
         return self.contador%self.limite
 
-def criar_mascara(altura, largura):
+def criar_mascara(altura, largura, args):
     mascara = np.zeros((altura, largura), dtype=np.float32)
     
     centro_h, centro_w = altura // 2, largura // 2
@@ -34,14 +32,14 @@ def criar_mascara(altura, largura):
 
 def amplitude(imagem):
     # A imagem de entrada deve ser um array numpy
-    fft = np.fft.fftshift(np.fft.fft2(imagem))
-    amp = np.abs(fft)
-    fase = np.angle(fft)
-    return amp, fase
+    fft = np.fft.fftshift(np.fft.fft2(imagem)) # decompoem em fase e amplitude, é a transformação rapida de fourier
+    amp = np.abs(fft)   # intensidade de cada frequencia da imagem
+    fase = np.angle(fft)    # localização espacial das estruturas da imagem
+    return amp, fase 
 
-def envenenamento(amGatilho, amAlvo, faseAlvo):
+def envenenamento(amGatilho, amAlvo, faseAlvo, args):
     altura, largura = amAlvo.shape
-    mascara = criar_mascara(altura, largura)
+    mascara = criar_mascara(altura, largura, args)
     amplitudeFinal = (args.proporcaoAtaque*amGatilho+(1-args.proporcaoAtaque)*amAlvo)*mascara + amAlvo*(1-mascara)
     fftModificada = amplitudeFinal * np.exp(1j * faseAlvo)
     # Desfaz o shift antes da transformada inversa
@@ -73,7 +71,7 @@ class PoisonedDataset(Dataset):
             channels_poisoned = []
             for i in range(img_np.shape[0]): # Itera sobre os canais
                 target_amp, target_phase = amplitude(img_np[i])
-                poisoned_channel = envenenamento(trigger_amp[i], target_amp, target_phase)
+                poisoned_channel = envenenamento(trigger_amp[i], target_amp, target_phase, self.args)
                 channels_poisoned.append(poisoned_channel)
 
             # Reconstitui a imagem e atualiza o rótulo
@@ -82,13 +80,9 @@ class PoisonedDataset(Dataset):
 
         return img, label
 
-### MUDANÇA ###
-# Esta função agora SÓ coleta as amplitudes do gatilho e as retorna.
-# Ela não modifica mais o trainSet.
 def get_trigger_amplitudes(full_train_set, args):
     listaAmplitudeGatilho = []
     
-
     trigger_loader = torch.utils.data.DataLoader(full_train_set, batch_size=args.batchsize)
 
     for imagem, rotulo in trigger_loader:

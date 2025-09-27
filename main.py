@@ -65,7 +65,7 @@ for wm in range(0, 100, 5):
     for modelo in listaDeModelos:
         modelo.load_state_dict(modeloGlobal.state_dict())
 
-    listaOptim = [optim.Adam(modelo.parameters(), lr=args.lr) for modelo in listaDeModelos]
+    listaOptim = [optim.SGD(modelo.parameters(), lr=args.lr, momentum=0.9) for modelo in listaDeModelos]
 
     # ### MUDANÇA ###
     # A chamada para ataqueCifar() é removida daqui, pois a lógica agora está em pegar_dados_iid

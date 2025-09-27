@@ -60,8 +60,8 @@ for wm in range(0, 100, 5):
     args.num_atacante = wm
     testSet, trainSetList, classes = pegar_dados_iid() # pega dados
 
-    modeloGlobal = ModeloCifar10_Revisado().to(device)
-    listaDeModelos = [ModeloCifar10_Revisado().to(device) for _ in range(args.num_cliente)]
+    modeloGlobal = ResNet18().to(device)
+    listaDeModelos = [ResNet18().to(device) for _ in range(args.num_cliente)]
     for modelo in listaDeModelos:
         modelo.load_state_dict(modeloGlobal.state_dict())
 
@@ -81,7 +81,8 @@ for wm in range(0, 100, 5):
             print(f"Clientes selecionados: {selecionados}")
 
             if epoca == 100 or epoca == 200:
-                args.lr /= 2
+                args.lr = args.reducao
+                args.reducao = args.segundaReducao
                 print(f"Reduzindo taxa de aprendizado para: {args.lr}")
                 listaOptim = [optim.SGD(modelo.parameters(), lr=args.lr, momentum=0.9) for modelo in listaDeModelos]
             
@@ -111,25 +112,58 @@ for wm in range(0, 100, 5):
         if not os.path.exists(path):
             os.makedirs(path)
 
-        plt.figure(figsize=(10, 6))
+        config_info = {
+            'Itens na Simulação': args.num_cliente,
+            'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+            'Otimizador': 'SDG',
+            'Dataset': 'CIFAR-10',
+            'Atacantes': wm,
+            'Clientes selecionados por epoca': args.selecionar
+            }
+        info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
+        
+
+        plt.figure(figsize=(10, 8))
+        config_info = {
+            'Quantidade de Clientes': args.num_cliente,
+            'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+            'Otimizador': 'SGD',
+            'Dataset': 'CIFAR-10',
+            'Atacantes': wm,
+            'Clientes selecionados por epoca': args.selecionar
+            }
+        info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
         plt.plot(range(len(listaAcuracia)), listaAcuracia, label='Acurácia')
         plt.plot(range(len(errosCertos)), errosCertos, label='ASR')
-        plt.plot(range(len(errosErrados)), errosErrados, label='ErrouErrado')
+        plt.plot(range(len(errosErrados)), errosErrados, label='ImprecisãoBackdoor')
         plt.title('Análise de Métricas por Épocas')
         plt.xlabel('Épocas')
         plt.ylabel('Valor da Métrica')
         plt.legend()
         plt.grid(True)
+        plt.subplots_adjust(bottom=0.25)
+        plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
         plt.savefig(f'{path}/grafico_combinado.png')
         plt.close()
 
 
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(10, 8))
+config_info = {
+    'Quantidade de Clientes': args.num_cliente,
+    'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+    'Otimizador': 'SGD',
+    'Dataset': 'CIFAR-10',
+    'Atacantes': wm,
+    'Clientes selecionados por epoca': args.selecionar
+    }
+info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
 plt.plot(range(0,100,5), maiores_acc, label = 'Acurácia')
 plt.plot(range(0,100,5), maiores_asr, lable = 'ASR')
 plt.title('Análise de Métricas por Atacante')
 plt.xlabel('Atacantes')
 plt.ylabel('Valor da Métrica')
 plt.grid(True)
+plt.subplots_adjust(bottom=0.25)
+plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
 plt.savefig(f'metricaPorAtacante.png')
 plt.close()

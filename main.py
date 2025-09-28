@@ -67,9 +67,6 @@ for wm in range(0, 100, 5):
 
     listaOptim = [optim.SGD(modelo.parameters(), lr=args.lr, momentum=0.9) for modelo in listaDeModelos]
 
-    # ### MUDANÇA ###
-    # A chamada para ataqueCifar() é removida daqui, pois a lógica agora está em pegar_dados_iid
-    # ataqueCifar(trainSetList) 
     listaAcuracia = []
     errosCertos = []
     errosErrados = []

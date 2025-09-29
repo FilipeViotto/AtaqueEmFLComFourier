@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from args import Args
 from modelos import Modelo
+import numpy as np
 
 
 def treinar(modelos, train_list, listaOptim:list, device, selecionados, args:Args):
@@ -24,7 +25,8 @@ def treinar(modelos, train_list, listaOptim:list, device, selecionados, args:Arg
         
                     
 
-def testar(modelo, test_loader, device, classes=None, args = None):
+def testar(modelo, test_loader, device, classes=None, args = None, fazerMatriz = False):
+    matriz_de_confusao = np.zeros((10,10))
     modelo.eval()
     correct = 0
     total = 0
@@ -40,8 +42,11 @@ def testar(modelo, test_loader, device, classes=None, args = None):
             images, labels = images.to(device), labels.to(device)
             outputs = modelo(images)
             _, predicted = torch.max(outputs.data, 1)
+
+            if fazerMatriz:
+                for l, p in zip(labels, predicted):
+                    matriz_de_confusao[l.item()][p.item()] += 1
             
-            # 1. Acurácia Geral
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
@@ -69,10 +74,10 @@ def testar(modelo, test_loader, device, classes=None, args = None):
     trigger_clean_acc = 100 * trigger_correct_as_trigger / trigger_total if trigger_total > 0 else 0
     # Taxa de erro (classificando como algo diferente do gatilho)
     trigger_error_rate = 100 - trigger_clean_acc
-    
-    # O retorno corresponde à sua chamada no main.py:
-    # acc, backdoor, naoBackdoor, GatilhoEGatilho
-    return accuracy, asr, trigger_error_rate
+
+    if fazerMatriz:
+        return accuracy, asr, trigger_error_rate, matriz_de_confusao, fazerMatriz
+    return accuracy, asr, trigger_error_rate, None, fazerMatriz
 
 
 def testar2(modelo, test_loader, device = torch.device('cpu'), classes = None):

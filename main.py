@@ -14,7 +14,7 @@ from agregacoes import avg, avg_padrao
 from treinoTeste import testar, treinar
 from enviaEmail import enviarEmail
 from ataque import get_trigger_amplitudes, PoisonedDataset
-
+import seaborn as sns
 def pegar_dados_iid():
     train_data, test_data, classes = down_datas.down_cifar()  # baixa dados
 
@@ -55,13 +55,13 @@ def pegar_dados_iid():
 
 maiores_acc = []
 maiores_asr = []
-for wm in range(0, 100, 5):
+for wm in [10,20,30]:
     print(f'numero de atacantes {wm}')
     args.num_atacante = wm
     testSet, trainSetList, classes = pegar_dados_iid() # pega dados
 
-    modeloGlobal = ModeloCifar10_Revisado().to(device)
-    listaDeModelos = [ModeloCifar10_Revisado().to(device) for _ in range(args.num_cliente)]
+    modeloGlobal = ResNet18().to(device)
+    listaDeModelos = [ResNet18().to(device) for _ in range(args.num_cliente)]
     for modelo in listaDeModelos:
         modelo.load_state_dict(modeloGlobal.state_dict())
 
@@ -95,8 +95,18 @@ for wm in range(0, 100, 5):
 
             print("Testando modelo global...")
             # Passa o device para a função de teste
-            acc, backdoor, naoBackdoor = testar(modeloGlobal, testSet, device, classes, args=args)
+            acc, backdoor, naoBackdoor, matrizDeConfusao, fazermMatriz = testar(modeloGlobal, testSet, device, classes, args=args, fazerMatriz = True if epoca%30==0 else False)
             print(f'Acurácia: {acc:.2f}%, ASR (Backdoor): {backdoor:.2f}%, Gatilho C/E: {naoBackdoor:.2f}%')
+            
+            if fazermMatriz:
+                path = f'simulacoes_res/matrizes/numAtacantes{wm}/'
+                os.makedirs(path, exist_ok=True)
+
+                plt.figure(figsize=(10, 8))
+                sns.heatmap(matrizDeConfusao, annot=True,fmt='.2f', cmap='Blues', yticklabels= classes, xticklabels=classes)
+                plt.tight_layout()
+                plt.savefig(f'{path}epoca_{epoca}.png')
+                plt.close()
 
             listaAcuracia.append(acc)
             errosCertos.append(backdoor)
@@ -106,7 +116,7 @@ for wm in range(0, 100, 5):
     finally:
         maiores_acc.append(max(listaAcuracia))
         maiores_asr.append(max(errosCertos))
-        path = f'simulacoes/sim{args.num_atacante}'
+        path = f'simulacoes_res/sim{args.num_atacante}'
         
         if not os.path.exists(path):
             os.makedirs(path)
@@ -114,12 +124,13 @@ for wm in range(0, 100, 5):
         plt.figure(figsize=(10, 8))
         config_info = {
             'Itens na Simulação': args.num_cliente,
-            'Tipo de modelo': 'ModeloSimplificado',
-            'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+            'Tipo de modelo': 'ResNet',
+            'Taxa de Aprendizagem': '0.1, 0.02, 0.004',
             'Otimizador': 'SDG',
             'Dataset': 'CIFAR-10',
             'Atacantes': wm,
-            'Clientes selecionados por epoca': args.selecionar
+            'Clientes selecionados por epoca': args.selecionar,
+            'Peso dos Atacantes': args.fatorLambida
             }
         info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
         plt.plot(range(len(listaAcuracia)), listaAcuracia, label='Acurácia')
@@ -134,22 +145,23 @@ for wm in range(0, 100, 5):
         plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
         plt.savefig(f'{path}/grafico_combinado.png')
         plt.close()
-        enviarEmail(f'atacante: {wm}\n\nacuracia: {listaAcuracia}\n\nASR: {errosCertos}\n\nimprecisãoBackdoor: {errosErrados}\n', f'{path}/grafico_combinado.png',)
+        #enviarEmail(f'atacante: {wm}\n\nacuracia: {listaAcuracia}\n\nASR: {errosCertos}\n\nimprecisãoBackdoor: {errosErrados}\n', f'{path}/grafico_combinado.png',)
 
 
 plt.figure(figsize=(10, 8))
 config_info = {
     'Itens na Simulação': args.num_cliente,
-    'Tipo de modelo': 'ModeloSimplificado',
-    'Taxa de Aprendizagem': '0.01, 0.005, 0.002',
+    'Tipo de modelo': 'ResNet',
+    'Taxa de Aprendizagem': '0.1, 0.02, 0.004',
     'Otimizador': 'SDG',
     'Dataset': 'CIFAR-10',
     'Atacantes': wm,
-    'Clientes selecionados por epoca': args.selecionar
+    'Clientes selecionados por epoca': args.selecionar,
+    'Peso dos Atacantes': args.fatorLambida
     }
 info_text = '\n'.join([f'{key}: {value}' for key, value in config_info.items()])
-plt.plot(range(0,100,5), maiores_acc, label = 'Acurácia')
-plt.plot(range(0,100,5), maiores_asr, lable = 'ASR')
+plt.plot(range(len(maiores_acc)), maiores_acc, label = 'Acurácia')
+plt.plot(range(len(maiores_asr)), maiores_asr, label = 'ASR')
 plt.title('Análise de Métricas por Atacante')
 plt.xlabel('Atacantes')
 plt.ylabel('Valor da Métrica')
@@ -159,4 +171,4 @@ plt.subplots_adjust(bottom=0.25)
 plt.figtext(0.5, 0.02, info_text, ha="center", fontsize=9, bbox={"facecolor":"lightsteelblue", "alpha":0.5, "pad":5})
 plt.savefig(f'metricaPorAtacante.png')
 plt.close()
-enviarEmail(f'Resultado total\n\n Maiores acuracias: {maiores_acc}, maiores ASR: {maiores_asr}', f'metricaPorAtacante.png')
+#enviarEmail(f'Resultado total\n\n Maiores acuracias: {maiores_acc}, maiores ASR: {maiores_asr}', f'metricaPorAtacante.png')

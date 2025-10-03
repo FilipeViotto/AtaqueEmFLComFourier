@@ -163,7 +163,6 @@ class ResNet18(nn.Module):
     def __init__(self, in_channels=3, num_classes=10):
         super(ResNet18, self).__init__()
 
-        # 1. Camada Convolucional Inicial
         self.conv1 = nn.Conv2d(
             in_channels, 
             64, 
@@ -174,43 +173,26 @@ class ResNet18(nn.Module):
         )
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
-
-        # 2. Quatro BasicBlocks
-        # Bloco 1: Entrada 64 -> Saída 64. Strides (1, 1)
         self.block1 = BasicBlock(64, 64, stride=1)
-        
-        # Bloco 2: Entrada 64 -> Saída 128. Strides (2, 1) -> Downsampling
         self.block2 = BasicBlock(64, 128, stride=2)
-        
-        # Bloco 3: Entrada 128 -> Saída 256. Strides (2, 1) -> Downsampling
         self.block3 = BasicBlock(128, 256, stride=2)
-        
-        # Bloco 4: Entrada 256 -> Saída 512. Strides (2, 1) -> Downsampling
         self.block4 = BasicBlock(256, 512, stride=2)
-
-        # Camada de pooling para reduzir a dimensão espacial para 1x1 antes da camada FC
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        
-        # 3. Camada Totalmente Conectada (Classificador)
+
         self.fc = nn.Linear(512, num_classes)
 
     def forward(self, x):
-        # Passagem pela camada inicial
+
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
-
-        # Passagem pelos quatro blocos
         x = self.block1(x)
         x = self.block2(x)
         x = self.block3(x)
         x = self.block4(x)
-
-        # Pooling e achatamento (flatten)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        
-        # Passagem pela camada de classificação
+
         x = self.fc(x)
 
         return x

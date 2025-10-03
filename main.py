@@ -14,6 +14,7 @@ from agregacoes import avg, avg_padrao
 from treinoTeste import testar, treinar
 from enviaEmail import enviarEmail
 from ataque import get_trigger_amplitudes, PoisonedDataset
+from defesa import defesa
 import seaborn as sns
 def pegar_dados_iid():
     train_data, test_data, classes = down_datas.down_cifar()  # baixa dados
@@ -56,6 +57,7 @@ def pegar_dados_iid():
 maiores_acc = []
 maiores_asr = []
 for wm in [10,20,30]:
+    historico = {}
     print(f'numero de atacantes {wm}')
     args.num_atacante = wm
     testSet, trainSetList, classes = pegar_dados_iid() # pega dados
@@ -88,6 +90,8 @@ for wm in [10,20,30]:
             
             # Passa o device para a função de treino
             treinar(listaDeModelos, trainSetList, listaOptim, device, selecionados, args)
+
+            idModelos, historico = defesa([listaDeModelos[i] for i in selecionados], historico)
             
             print('Agregando modelos...')
             avg(listaDeModelos, modeloGlobal, selecionados, args)

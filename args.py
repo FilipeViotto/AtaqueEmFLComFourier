@@ -1,9 +1,9 @@
 class Args():
     def __init__(self):
-        self.taxaDeAprendizadoDoServidor = 0.01
-        self.num_atacante = 10
-        self.num_cliente = 100
-        self.selecionar = 10
+        self.taxaDeAprendizadoDoServidor = 1
+        self.num_atacante = 1
+        self.num_cliente = 20
+        self.selecionar = 20
         self.epocasLocais = 2
         self.batchsize = 64
         self.epoca = 300                # estabelecido pelo artigo
@@ -15,3 +15,5 @@ class Args():
         self.fatorLambida = 1
         self.reducao = 0.02
         self.segundaReducao = 0.004
+        self.comDefesa = False
+        self.numGrupos = 5

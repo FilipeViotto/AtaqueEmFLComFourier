@@ -5,4 +5,6 @@ antesDepois
 amplitudes7
 __pycache__
 *.png
+*.txt
+cliente*
 data

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, TensorDataset
 
 
 class Contador():
@@ -97,3 +97,42 @@ def get_trigger_amplitudes(full_train_set, args):
 
     print(f"Encontradas {len(listaAmplitudeGatilho)} amostras de gatilho.")
     return listaAmplitudeGatilho
+
+def aplicar_trigger_a_dataset(original_dataset, trigger_amplitudes, args):
+    """
+    Cria uma cópia de um dataset aplicando o trigger a todas as imagens
+    da classe-alvo, mas mantendo o rótulo original para avaliação da ASR.
+    """
+    imgs_com_trigger = []
+    rotulos_originais = []
+    trigger_count = 0
+
+    print(f"A aplicar trigger a {len(original_dataset)} amostras para avaliação de ASR...")
+
+    for img, label in original_dataset:
+        # Aplica o trigger apenas se a imagem for da classe-alvo do ataque
+        if label == args.alvo:
+            trigger_amp = trigger_amplitudes[trigger_count % len(trigger_amplitudes)]
+            trigger_count += 1
+            
+            img_np = img.numpy()
+            channels_poisoned = []
+            for i in range(img_np.shape[0]): # Itera sobre os canais
+                target_amp, target_phase = amplitude(img_np[i])
+                poisoned_channel = envenenamento(trigger_amp[i], target_amp, target_phase, args)
+                channels_poisoned.append(poisoned_channel)
+            
+            img_envenenada = torch.stack(channels_poisoned, dim=0)
+            imgs_com_trigger.append(img_envenenada)
+        else:
+            # Mantém a imagem original se não for da classe-alvo
+            imgs_com_trigger.append(img)
+
+        rotulos_originais.append(label)
+
+    novas_imgs_tensor = torch.stack(imgs_com_trigger)
+    novos_rotulos_tensor = torch.tensor(rotulos_originais, dtype=torch.long)
+    
+    print(f"Dataset para ASR criado com {len(novas_imgs_tensor)} amostras.")
+    
+    return TensorDataset(novas_imgs_tensor, novos_rotulos_tensor)
